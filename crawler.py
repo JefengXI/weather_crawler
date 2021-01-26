@@ -1,30 +1,50 @@
 # @Author  : 习健丰 (jeffxi@fuzhi.ai)
-# @Desc    : 爬取《天气后报》网站中中国各城市的历史天气(2018~至今）
+# @Desc    : 爬取《天气后报》网站中中国各城市的历史天气(2018~至今），按照省存为.xlsx文件,一个sheet为一个城市
 
-import time
+import random
+from time import sleep
 import requests
 import numpy as np
 import pandas as pd
 from bs4 import BeautifulSoup
-
-BASE_URL = "http://www.tianqihoubao.com/lishi/beijing.html"
-START_TIME = "2018"
-headers = {
-    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/537.36 (KHTML, like Gecko) '
-                  'Chrome/72.0.3626.121 Safari/537.36'
-}
+import config as cfg
 
 
-# class Crawler:
-#     _base_url = "http://www.tianqihoubao.com/lishi/"
+def province_scraper(url):
+    """
+    以省划分csv文件，依次访问每个省，存为csv文件
+    :param url:
+    :return: None
+    """
+    soup = require_data(url)
+
+    # 数据清洗
+    lst = soup.find_all('div', class_="citychk")
+    lst = lst[0].find_all('dl')
+    for i in lst:
+        # 以省为单位新建文件
+        province = i.find('b').get_text()
+        writer = pd.ExcelWriter('data/' + province + '.xlsx')
+        # 找到所有城市标签
+        cities_tag = i.find_all('a')
+        # 首行为省名，去掉
+        cities_tag.pop(0)
+        for j in cities_tag:
+            city_name = j.get_text()
+            city_url = j['href']
+            print(city_name, city_url)
+            frame = month_scraper(cfg.ROOT_URl + city_url)
+            frame.to_excel(writer, sheet_name=city_name, index=None)
+        writer.close()
+
+
 def month_scraper(url):
     """
-    读取需要的所有月份的url，返回一个地区历史每天的天气
+    读取某城市需要的所有月份的url，返回一个地区历史每天的天气
     :param url: 查询网址
-    :return: dataframe
+    :return: month_frame: dataframe
     """
-    html = requests.get(url=url, headers=headers)
-    soup = BeautifulSoup(html.content, "lxml")
+    soup = require_data(url)
 
     # 数据清洗
     lst = soup.find_all('div', attrs={'id': 'content', 'class': 'wdetail'})[0]
@@ -33,7 +53,7 @@ def month_scraper(url):
     # 找到指定年份，没有则返回
     count = 0
     for year in years:
-        if START_TIME in str(year):
+        if cfg.START_TIME in str(year):
             break
         count += 1
     if not years:
@@ -51,29 +71,24 @@ def month_scraper(url):
             if extra_path not in url:
                 url = extra_path + url
             urls.append(url)
-            print(url)
-    print(urls)
     # 获取链接里面的内容
-    _url = "http://www.tianqihoubao.com/"
-    total_frame = pd.DataFrame()#合并还有问题
+    month_list = []
     for url in urls:
-        frame = date_scraper(_url + url)
-        total_frame = pd.concat(total_frame, frame)
-    print(total_frame)
+        frame = date_scraper(cfg.ROOT_URl + url)
+        month_list.append(frame)
+    month_frame = pd.concat([f for f in month_list], axis=0, ignore_index=True)
+    return month_frame
 
 
 def date_scraper(url):
     """
-    读取当月内所有日期的天气
-    :param url: 查询网址
-    :return: dataframe
+    读取当月内所有日期的天气,返回一个月内的所有历史天气
+    :param url: str
+    :return: date_frame: dataframe
     """
     # 请求数据
-    try:
-        html = requests.get(url=url, headers=headers)
-        soup = BeautifulSoup(html.content, "lxml")
-    except:
-        print("请求失败")
+    soup = require_data(url)
+
     # 数据清洗
     lst = soup.find_all('tr')
     titles = remove_tag(lst.pop(0).find_all('b'))
@@ -86,16 +101,37 @@ def date_scraper(url):
         item[2] = ''.join(lst[i].find_all('td')[2].get_text().split())
         item[3] = ''.join(lst[i].find_all('td')[3].get_text().split())
         month_data.append(item)
-    frame = pd.DataFrame(month_data, columns=titles)
-    return frame
+    date_frame = pd.DataFrame(month_data, columns=titles)
+    return date_frame
+
+
+def require_data(url):
+    # 请求数据
+    max_retry = 0
+    while max_retry < 5:
+        try:
+            html = requests.get(url=url, headers=cfg.HEADER, timeout=5)
+            soup = BeautifulSoup(html.content, "lxml")
+            print("网址:{0}请求成功!".format(url))
+            return soup
+        except:
+            max_retry += 1
+            print("网址:{0}请求失败，重试第{1}次".format(url, max_retry))
+            sleep(random.uniform(0.5, 3))
+    print("服务器拒绝响应")
+    exit(1)
 
 
 def remove_tag(lst):
+    """
+    去除列表中标签值的标签
+    :param lst:[tag]
+    :return: list:[str]
+    """
     for i in range(len(lst)):
         lst[i] = lst[i].get_text()
     return lst
 
 
 if __name__ == '__main__':
-    # data = date_scraper(BASE_URL)
-    month_scraper(BASE_URL)
+    province_scraper(cfg.BASE_URL)
