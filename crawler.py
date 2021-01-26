@@ -1,4 +1,3 @@
-# @Author  : 习健丰 (jeffxi@fuzhi.ai)
 # @Desc    : 爬取《天气后报》网站中中国各城市的历史天气(2018~至今），按照省存为.xlsx文件,一个sheet为一个城市
 
 import random

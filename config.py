@@ -1,4 +1,3 @@
-# @Author  : 习健丰 (jeffxi@fuzhi.ai)
 # @Desc    : config file
 
 ROOT_URl = "http://www.tianqihoubao.com"
